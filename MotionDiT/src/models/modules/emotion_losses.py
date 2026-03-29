@@ -227,6 +227,11 @@ def perceptual_emotion_consistency_loss(
     space is trained to be emotion-discriminative, so errors there correspond
     to perceptually different emotional states.
 
+    Both pred and gt features are extracted in **eval mode** (dropout off)
+    so the similarity signal is deterministic and the loss is numerically
+    stable.  Gradients still flow through pred_feat back into classifier
+    parameters and the upstream denoising network.
+
     Args:
         classifier:  :class:`EmotionClassifierHead` (shared with cls loss).
         pred_motion: [B, L, 265]
@@ -238,8 +243,16 @@ def perceptual_emotion_consistency_loss(
     pred_exp = _get_exp_pooled(pred_motion)   # [B, 63]
     gt_exp   = _get_exp_pooled(gt_motion)     # [B, 63]
 
-    pred_feat = classifier.forward_features(pred_exp)  # [B, hidden]
-    gt_feat   = classifier.forward_features(gt_exp)    # [B, hidden]
+    # Switch to eval so dropout is disabled → deterministic features.
+    # Restore training state afterwards to not affect other loss terms.
+    was_training = classifier.training
+    classifier.eval()
+    try:
+        pred_feat = classifier.forward_features(pred_exp)       # [B, hidden]
+        gt_feat   = classifier.forward_features(gt_exp.detach()) # [B, hidden], no grad
+    finally:
+        if was_training:
+            classifier.train()
 
     return F.mse_loss(pred_feat, gt_feat.detach())
 

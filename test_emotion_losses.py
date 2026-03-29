@@ -110,9 +110,14 @@ def test_perceptual_emotion_consistency_loss():
     assert not torch.isnan(loss), "NaN in perceptual loss"
     assert loss.item() >= 0, "Expected non-negative loss"
 
-    # Self-consistency: if pred == gt, loss should be near 0
+    # Self-consistency: if pred == gt, loss must be exactly 0.
+    # The fix in emotion_losses.py uses eval mode (dropout off) so both calls
+    # to forward_features produce identical outputs → MSE == 0.
     loss_self = perceptual_emotion_consistency_loss(head, pred, pred)
-    assert loss_self.item() < 1e-6, f"Expected ~0 self-loss, got {loss_self.item()}"
+    assert loss_self.item() < 1e-6, (
+        f"Expected ~0 self-loss (eval mode disables dropout), got {loss_self.item():.6f}. "
+        "This indicates the classifier is NOT switching to eval mode correctly."
+    )
     print(f"  PASS  loss={loss.item():.4f}, self_loss={loss_self.item():.2e}")
 
 
